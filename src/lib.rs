@@ -1,13 +1,27 @@
 #![no_std]
+
+// Test harness configuration
 #![cfg_attr(test, no_main)]
 #![feature(custom_test_frameworks)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+// Use the x86-interrupt ABI even though it is unstable
+#![feature(abi_x86_interrupt)]
+
 use core::panic::PanicInfo;
 
+pub mod interrupts;
 pub mod serial;
 pub mod vga_buffer;
+
+pub fn init() {
+    interrupts::init_idt();
+}
+
+// *********************
+// * Qemu interactions *
+// *********************
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -25,6 +39,10 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
     }
 }
 
+// **********************************
+// * Test harness and testing utils *
+// **********************************
+
 pub fn test_panic_handler(info: &PanicInfo) -> ! {
     serial_println!("[failed]\n");
     serial_println!("Error: {}\n", info);
@@ -32,7 +50,6 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     loop {}
 }
 
-// testing utils
 pub trait Testable {
     fn run(&self);
 }
@@ -58,9 +75,11 @@ pub fn test_runner(tests: &[&dyn Testable]) {
     exit_qemu(QemuExitCode::Success);
 }
 
+/// Entry point when `cargo test` tests the library crate
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    init();
     test_main();
     loop {}
 }

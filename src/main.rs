@@ -9,20 +9,17 @@ use core::panic::PanicInfo;
 mod serial;
 mod vga_buffer;
 
-/// entry point (regular version)
-#[cfg(not(test))]
+/// entry point
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     println!("Hello, {}!", "world");
 
-    loop {}
-}
+    clacos::init();
 
-/// entry point (test mode version)
-#[cfg(test)]
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+    #[cfg(test)]
     test_main();
+
+    println!("Did not crash!");
     loop {}
 }
 
