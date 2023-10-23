@@ -20,7 +20,7 @@ pub extern "C" fn _start() -> ! {
     test_main();
 
     println!("Did not crash!");
-    loop {}
+    clacos::hlt_loop();
 }
 
 /// Panic handler that infinite loops since we're baremetal (regular version)
@@ -28,7 +28,7 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {}
+    clacos::hlt_loop();
 }
 
 /// Testing mode panic handler
