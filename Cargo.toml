@@ -24,10 +24,16 @@ test-args = [
 ]
 test-success-exit-code = 33
 
+# The way we are testing that a panic correctly occurs implies that all
+# integration tests expecting a panic only support one test case. To avoid
+# creating multiple cases by mistake and to simplify the code, we disable the
+# test harness altogether and write the test code in each test's `_start`
+# function directly.
+
 [[test]]
-# The way we are testing that a panic correctly occurs implies that the
-# integration test only supports one test case. To avoid creating multiple cases
-# by mistake and to simplify the code, we disable the test harness altogether
-# and write the test code in the `_start` function directly.
 name = "should_panic"
+harness = false
+
+[[test]]
+name = "stack_overflow"
 harness = false
