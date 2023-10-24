@@ -9,12 +9,18 @@
 // Use the x86-interrupt ABI even though it is unstable
 #![feature(abi_x86_interrupt)]
 
+#![deny(unsafe_op_in_unsafe_fn)]
+
 use core::panic::PanicInfo;
 
+#[cfg(test)]
+use bootloader::{BootInfo, entry_point};
+
+pub mod gdt;
 pub mod interrupts;
+pub mod memory;
 pub mod serial;
 pub mod vga_buffer;
-pub mod gdt;
 
 pub fn init() {
     gdt::init();
@@ -88,12 +94,13 @@ pub fn hlt_loop() -> ! {
 
 /// Entry point when `cargo test` tests the library crate
 #[cfg(test)]
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+pub fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
     init();
     test_main();
     hlt_loop();
 }
+#[cfg(test)]
+entry_point!(test_kernel_main);
 
 /// Testing mode panic handler
 #[cfg(test)]
