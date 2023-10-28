@@ -5,9 +5,14 @@
 #![reexport_test_harness_main = "test_main"]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+extern crate alloc;
+
 use core::panic::PanicInfo;
 
 use bootloader::{entry_point, BootInfo};
+use x86_64::VirtAddr;
+
+use clacos::{allocator, memory};
 
 mod serial;
 mod vga_buffer;
@@ -18,33 +23,15 @@ pub fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     clacos::init();
 
-    // XXX: virtual memory allocation demonstration
-    use clacos::memory;
-    use x86_64::{
-        structures::paging::{Mapper, Page, PageTableFlags, PhysFrame},
-        PhysAddr, VirtAddr,
-    };
-    // init the mapper and build a frame allocator using the regions set up by the bootloader
+    // init the memory mapper and build a frame allocator using the regions set up by the
+    // bootloader
     let physical_memory_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { memory::init(physical_memory_offset) };
     let mut frame_allocator =
         unsafe { memory::BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-    // the page we want to map in virtual space
-    let page: Page = Page::containing_address(VirtAddr::new(0xdeadbeaf000));
-
-    // the frame we want to map it to (some place in the middle of the screen's memory region)
-    let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
-    let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-
-    // do the mapping using our frame allocator
-    let map_to_result = unsafe { mapper.map_to(page, frame, flags, &mut frame_allocator) };
-    map_to_result.expect("map_to failed").flush();
-
-    // write to the page and see if it appears on screen
-    let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
-    unsafe { page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e) };
-    // XXX: end of demonstration
+    // Set up the heap
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
     #[cfg(test)]
     test_main();
