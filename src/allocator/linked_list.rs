@@ -70,7 +70,8 @@ impl LinkedListAllocator {
         }
     }
 
-    /// Add the given memory region to the front of the list
+    /// Add the given memory region to the list, keeping it sorted by start address and merging
+    /// with adjacent free regions.
     ///
     /// # Safety
     ///
@@ -78,20 +79,87 @@ impl LinkedListAllocator {
     /// currently in use. Using only information given by allocation functions from this module
     /// should suffice.
     unsafe fn add_free_region(&mut self, addr: usize, size: usize) {
-        // ensure that the freed region is capable of holding a ListNode struct (check that `addr`
+        // Ensure that the freed region is capable of holding a ListNode struct (check that `addr`
         // is correctly aligned for `ListNode` and that size is large enough to store it).
         // These are asserts because the given `addr` and `size` should have been computed by
-        // allocation functions from this same module, so these are effectively consistency checks
+        // allocation functions from this same module, so these are only consistency checks
         assert_eq!(fast_align_up(addr, mem::align_of::<ListNode>()), addr);
         assert!(size >= mem::size_of::<ListNode>());
 
-        // create a new node and prepend it at the start of our list
+        // Create a new node and prepare its address
         let mut node = ListNode::new(size);
-        node.next = self.head.next.take();
         let node_ptr = addr as *mut ListNode;
-        unsafe {
-            node_ptr.write(node);
-            self.head.next = Some(&mut *node_ptr)
+
+        // Find where to insert the node in the linked list.
+        // At each iteration we may have three references to three nodes, with the goal of changing
+        // the links from:
+        //      previous -> next
+        // to:
+        //      previous -> node -> next
+        // with addr_of!(previous) <= addr_of!(node) <= addr_of!(next)
+        // (not accounting for possible merges)
+        let mut previous = &mut self.head;
+        while let Some(ref mut next) = previous.next {
+            if *next as *const ListNode as usize > addr {
+                break;
+            }
+            previous = previous.next.as_mut().unwrap();
+        }
+
+        // See if `previous` and/or `previous.next` are adjacent to the new free region, so that we
+        // can merge with them.
+        let can_merge_right = {
+            if let Some(ref next) = previous.next {
+                let after_node_addr = fast_align_up(addr + size, mem::align_of::<ListNode>());
+                let next_addr = *next as *const ListNode as usize;
+                after_node_addr == next_addr
+            } else {
+                false
+            }
+        };
+        let can_merge_left = {
+            let previous_addr = previous as *const ListNode as usize;
+            let after_previous_addr =
+                fast_align_up(previous_addr + previous.size, mem::align_of::<ListNode>());
+            after_previous_addr == addr
+        };
+
+        // Merge where possible and rewrite all links but those pointing to *node_ptr (which exists
+        // only if we don't merge left, checked after)
+        if can_merge_left && can_merge_right {
+            // Both `previous` and `previous.next` are adjacent, merge with both.
+            let right = unsafe {
+                // XXX: `can_merge_right` ensures that `previous.next` is not None
+                previous.next.take().unwrap_unchecked()
+            };
+            previous.size = fast_align_up(
+                previous.size + node.size + right.size,
+                mem::align_of::<ListNode>(),
+            );
+            previous.next = right.next.take();
+        } else if can_merge_left {
+            // Only `previous` is adjacent, merge with it.
+            previous.size = fast_align_up(previous.size + node.size, mem::align_of::<ListNode>());
+        } else if can_merge_right {
+            // Only `previous.next` is adjacent, merge with it.
+            let right = unsafe {
+                // XXX: `can_merge_right` ensures that `previous.next` is not None
+                previous.next.take().unwrap_unchecked()
+            };
+            node.next = right.next.take();
+            node.size += fast_align_up(size + right.size, mem::align_of::<ListNode>());
+        } else {
+            // No merge possible
+            node.next = previous.next.take();
+        }
+
+        if !can_merge_left {
+            // We didn't merge with `previous` so we actually have to write a node at `*note_ptr`
+            // and make it the successor of `previous`.
+            unsafe {
+                node_ptr.write(node);
+                previous.next = Some(&mut *node_ptr)
+            }
         }
     }
 
@@ -192,8 +260,6 @@ unsafe impl GlobalAlloc for Locked<LinkedListAllocator> {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let (size, _) = LinkedListAllocator::size_align(layout);
         let mut allocator = self.lock();
-        unsafe {
-            allocator.add_free_region(ptr as usize, size)
-        }
+        unsafe { allocator.add_free_region(ptr as usize, size) }
     }
 }

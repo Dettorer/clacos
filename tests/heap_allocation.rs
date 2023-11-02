@@ -3,6 +3,7 @@
 #![feature(custom_test_frameworks)]
 #![test_runner(clacos::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+#![feature(allocator_api)]
 
 use core::panic::PanicInfo;
 
@@ -82,4 +83,62 @@ fn many_boxes_with_long_lived() {
 
     // check that the first allocated value is still there
     assert_eq!(*long_lived, -1);
+}
+
+/// Check that memory is reclaimed in a way that does not overly fragment free region
+#[test_case]
+fn many_long_lived_small_then_big() {
+    // We will fill the heap with relatively small allocations, then drop the values, then try to
+    // reuse the space by allocating one large value.
+    const MEDIUM_SIZE: usize = HEAP_SIZE / 16;
+    const LARGE_SIZE: usize = HEAP_SIZE / 8;
+    struct MediumData {
+        data: [u8; MEDIUM_SIZE],
+    }
+    struct LargeData {
+        data: [u8; LARGE_SIZE],
+    }
+
+    // First allocate enough medium-sized objects to fill at least half of the heap
+    let medium_size_count: usize = 13;
+    let mut boxes: Vec<Box<MediumData>> = Vec::with_capacity(medium_size_count);
+    for i in 0..medium_size_count {
+        let new_data = Box::try_new(MediumData {
+            data: [0; MEDIUM_SIZE],
+        })
+        .unwrap_or_else(|msg| {
+            panic!(
+                "Could not allocate a medium data at iteration {}/{}: {}",
+                i, medium_size_count, msg
+            )
+        });
+        boxes.push(new_data);
+    }
+    // Check their values to make sure they are used
+    for b in boxes.iter() {
+        assert_eq!(b.data[0], 0);
+    }
+
+    // Reclaim memory
+    drop(boxes);
+
+    // Allocate enough large-sized data to fill at least half of the heap
+    let large_size_count: usize = 7;
+    let mut boxes: Vec<Box<LargeData>> = Vec::with_capacity(large_size_count);
+    for i in 0..large_size_count {
+        let new_data = Box::try_new(LargeData {
+            data: [0; LARGE_SIZE],
+        })
+        .unwrap_or_else(|msg| {
+            panic!(
+                "Could not allocate a large data at iteration {}/{}: {}",
+                i, large_size_count, msg
+            )
+        });
+        boxes.push(new_data);
+    }
+    // Check their values to make sure they are used
+    for b in boxes.iter() {
+        assert_eq!(b.data[0], 0);
+    }
 }
