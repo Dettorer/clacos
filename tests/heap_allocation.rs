@@ -65,3 +65,21 @@ fn many_boxes() {
         assert_eq!(*x, i);
     }
 }
+
+/// Check that memory is correctly reclaimed when dropping values even in the presence of
+/// long-lived data
+#[test_case]
+fn many_boxes_with_long_lived() {
+    // first allocate a value that is meant to live through the entire function
+    let long_lived = Box::new(-1);
+
+    // do HEAP_SIZE Box allocations, which would overflow the heap if the boxes' memory wasn't
+    // reclaimed after each loop iteration
+    for i in 0..HEAP_SIZE {
+        let x = Box::new(i);
+        assert_eq!(*x, i);
+    }
+
+    // check that the first allocated value is still there
+    assert_eq!(*long_lived, -1);
+}

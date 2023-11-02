@@ -9,7 +9,11 @@
 // Use the x86-interrupt ABI even though it is unstable
 #![feature(abi_x86_interrupt)]
 
+// Force the use of `unsafe` blocks around unsafe operations even in `unsafe` functions
 #![deny(unsafe_op_in_unsafe_fn)]
+
+// Allow mutable references in const functions
+#![feature(const_mut_refs)]
 
 use core::panic::PanicInfo;
 

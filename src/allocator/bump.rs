@@ -1,3 +1,11 @@
+//! A heap memory allocator that uses a simple "current position" index in the heap that gets
+//! bumped after every new allocation.
+//!
+//! Main drawbacks:
+//!
+//! - memory is reclaimed only when the whole heap is deallocated, which may never happen if a long
+//! lived value is allocated early in the program.
+
 use core::ptr;
 
 use alloc::alloc::{GlobalAlloc, Layout};
